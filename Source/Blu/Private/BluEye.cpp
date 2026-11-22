@@ -54,6 +54,12 @@ void UBluEye::Init()
 		return;
 	}
 
+	if (!BluManager::bCefInitialized)
+	{
+		UE_LOG(LogBlu, Error, TEXT("CEF is not initialized, no browser created (see LogBlu STATUS at startup)"));
+		return;
+	}
+
 	//These no longer exist
 	//BrowserSettings.universal_access_from_file_urls = STATE_ENABLED;
 	//BrowserSettings.file_access_from_file_urls = STATE_ENABLED;

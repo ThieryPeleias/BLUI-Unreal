@@ -2,9 +2,35 @@ using System.Collections.Generic;
 using UnrealBuildTool;
 using System.IO;
 using System;
+using EpicGames.Core;
+using Microsoft.Extensions.Logging;
 
 public class Blu : ModuleRules
 {
+
+	// True when the project's .uproject enables the engine's Web Browser plugin (which links the engine CEF3)
+	private bool ProjectEnablesWebBrowser(ReadOnlyTargetRules Target)
+	{
+		if (Target.ProjectFile == null || !FileReference.Exists(Target.ProjectFile))
+		{
+			return false;
+		}
+		JsonObject[] Plugins;
+		if (!JsonObject.Read(Target.ProjectFile).TryGetObjectArrayField("Plugins", out Plugins))
+		{
+			return false;
+		}
+		foreach (JsonObject Plugin in Plugins)
+		{
+			string Name;
+			bool bEnabled;
+			if (Plugin.TryGetStringField("Name", out Name) && Name == "WebBrowserWidget" && Plugin.TryGetBoolField("Enabled", out bEnabled) && bEnabled)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
 
 	private string ThirdPartyPath
 	{
@@ -41,6 +67,14 @@ public class Blu : ModuleRules
 			new string[] {
 				Path.Combine(ModuleDirectory, "Private"),
 			});
+
+		// A monolithic exe (packaged game) can't hold two CEF SDKs: their symbols collide at link time
+		bool bEngineCefInSameBinary = Target.LinkType == TargetLinkType.Monolithic && ProjectEnablesWebBrowser(Target);
+		PrivateDefinitions.Add("BLU_ENGINE_CEF_IN_SAME_BINARY=" + (bEngineCefInSameBinary ? "1" : "0"));
+		if (bEngineCefInSameBinary)
+		{
+			Logger.LogWarning("BLUI: the project enables the engine's Web Browser plugin. In packaged (monolithic) builds both CEF SDKs end up in one exe and collide, so BLUI disables itself at startup. Disable the Web Browser plugin (WebBrowserWidget) to use BLUI in packaged games.");
+		}
 
 		if(Target.Platform == UnrealTargetPlatform.Win64)
 		{
