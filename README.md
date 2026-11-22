@@ -28,7 +28,7 @@ A UMG widget that anchors, centers and stretches like the engine's Web Browser w
 
 ### Building for UE 5.7, 5.8 and 5.9
 
-The same source builds on all three engines. `builder/build-engines.ps1` gives each engine its own host project in `BLUIHost/UE_<ver>` (its `Plugins/BLUI` links to this repo's `Source`, `Content`, `Resources` and `ThirdParty`, but keeps its own `Binaries`/`Intermediate`), so the builds never overwrite each other.
+The same source builds on all three engines. `builder/build-engines.ps1` gives each engine its own host project in `BLUIHost/UE_<ver>` (its `Plugins/BLUI` links to this repo's `Source`, `Content`, `Resources`, `ThirdParty` and `Config`, but keeps its own `Binaries`/`Intermediate`), so the builds never overwrite each other.
 
 ```
 powershell -ExecutionPolicy Bypass -File builder/build-engines.ps1                  # editor build, all three engines

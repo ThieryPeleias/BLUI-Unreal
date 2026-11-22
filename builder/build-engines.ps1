@@ -6,7 +6,7 @@
 .DESCRIPTION
   Each engine gets its own Blueprint-only host project in BLUIHost/UE_<ver>. Its
   Plugins/BLUI folder is a real folder holding a copy of BLUI.uplugin and junctions to the
-  repo's Source, Content, Resources and ThirdParty, so every engine compiles the same
+  repo's Source, Content, Resources, ThirdParty and Config, so every engine compiles the same
   source but keeps its own Binaries/ and Intermediate/.
 
   -Mode Editor   compiles the editor modules in each host (Build.bat). Use the host to
@@ -31,7 +31,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$Linked = @("Source", "Content", "Resources", "ThirdParty")
+$Linked = @("Source", "Content", "Resources", "ThirdParty", "Config")
 
 function Initialize-Host([string]$Version)
 {
@@ -43,8 +43,11 @@ function Initialize-Host([string]$Version)
 	$Json = "{`"FileVersion`":3,`"EngineAssociation`":`"$Version`",`"Plugins`":[{`"Name`":`"BLUI`",`"Enabled`":true}]}"
 	Set-Content -Path $Project -Value $Json -Encoding Ascii
 
-	# copied every run so version/description edits in the repo reach every host
-	Copy-Item (Join-Path $Repo "BLUI.uplugin") $PluginDir -Force
+	# copied every run so edits in the repo reach every host (and the packaged plugin)
+	foreach ($File in @("BLUI.uplugin", "README.md", "LICENSE", "CREDITS.md"))
+	{
+		Copy-Item (Join-Path $Repo $File) $PluginDir -Force
+	}
 
 	foreach ($Name in $Linked)
 	{
