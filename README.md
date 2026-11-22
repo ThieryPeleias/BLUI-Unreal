@@ -38,6 +38,13 @@ powershell -ExecutionPolicy Bypass -File builder/build-engines.ps1 -Engines 5.9 
 
 Open `BLUIHost/UE_<ver>/BLUIHost.uproject` with the matching engine to test in PIE. `BLUIHost/` and `Builds/` are git-ignored.
 
+Automated tests (after an editor build). `Blu.Layout` runs in the editor; `Blu.Browser` needs `-game` because CEF does not start in the editor outside PIE. It checks resize/DPI, a click on a scaled and offset widget, and stretch/center in a real UMG canvas.
+
+```
+"C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" BLUIHost\UE_5.8\BLUIHost.uproject -ExecCmds="Automation RunTests Blu.Layout;Quit" -unattended -nullrhi
+"C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" BLUIHost\UE_5.8\BLUIHost.uproject -game -RenderOffscreen -windowed -ResX=1280 -ResY=720 -ExecCmds="Automation RunTests Blu.Browser;Quit" -unattended
+```
+
 ### Convenience Blueprints
 
 The native plugin didn't contain any self contained drag and drop examples so I've added some.
