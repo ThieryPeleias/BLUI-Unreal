@@ -1,6 +1,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Containers/Ticker.h"
+#include "RHITypes.h"
+#include "TextureResource.h"
 #include "BluTypes.generated.h"
 
 struct FTickEventLoopData

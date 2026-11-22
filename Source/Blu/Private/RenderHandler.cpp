@@ -1,5 +1,6 @@
 #include "RenderHandler.h"
 #include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
 #include "BluEye.h"
 
 RenderHandler::RenderHandler(int32 Width, int32 Height, UBluEye* UI)
@@ -14,8 +15,20 @@ void RenderHandler::GetViewRect(CefRefPtr<CefBrowser> Browser, CefRect &Rect)
 	Rect = CefRect(0, 0, Width, Height);
 }
 
+bool RenderHandler::GetScreenInfo(CefRefPtr<CefBrowser> Browser, CefScreenInfo& ScreenInfo)
+{
+	ScreenInfo.device_scale_factor = ScaleFactor;
+	return true;
+}
+
 void RenderHandler::OnPaint(CefRefPtr<CefBrowser> Browser, PaintElementType Type, const RectList &DirtyRects, const void *Buffer, int InWidth, int InHeight)
 {
+	// Popup buffers (e.g. <select> lists) have the popup's size, not the view's
+	if (Type != PET_VIEW)
+	{
+		return;
+	}
+
 	FUpdateTextureRegion2D *UpdateRegions = static_cast<FUpdateTextureRegion2D*>(FMemory::Malloc(sizeof(FUpdateTextureRegion2D) * DirtyRects.size()));
 
 	int RegionIndex = 0;
@@ -30,7 +43,7 @@ void RenderHandler::OnPaint(CefRefPtr<CefBrowser> Browser, PaintElementType Type
 	}
 
 	// Trigger our parent UIs Texture to update
-	ParentUI->TextureUpdate(Buffer, UpdateRegions, DirtyRects.size());
+	ParentUI->TextureUpdate(Buffer, UpdateRegions, DirtyRects.size(), InWidth, InHeight);
 }
 
 void BrowserClient::OnAfterCreated(CefRefPtr<CefBrowser> Browser)

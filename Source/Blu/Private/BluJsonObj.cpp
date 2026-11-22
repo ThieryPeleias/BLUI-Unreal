@@ -1,6 +1,7 @@
 #include "BluJsonObj.h"
 #include "IBlu.h"
 #include "Json.h"
+#include "UObject/Package.h"
 
 UBluJsonObj::UBluJsonObj(const class FObjectInitializer& PCIP)
 : Super(PCIP)

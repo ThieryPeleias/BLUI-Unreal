@@ -2,6 +2,11 @@
 #include "BluEye.h"
 #include "IBlu.h"
 #include "RenderHandler.h"
+#include "BluLayout.h"
+#include "Engine/Engine.h"
+#include "Engine/World.h"
+#include "Misc/Paths.h"
+#include "RenderingThread.h"
 
 FTickEventLoopData UBluEye::EventLoopData = FTickEventLoopData();
 
@@ -87,6 +92,11 @@ void UBluEye::Init()
 		nullptr,
 		nullptr);
 
+	if (!Browser)
+	{
+		UE_LOG(LogBlu, Error, TEXT("Failed to create browser, was CEF initialized? (see LogBlu startup status)"));
+		return;
+	}
 
 	Browser->GetHost()->SetWindowlessFrameRate(Settings.FrameRate);
 	Browser->GetHost()->SetAudioMuted(Settings.bAudioMuted);
@@ -104,6 +114,15 @@ void UBluEye::Init()
 
 void UBluEye::ResetTexture()
 {
+	BluLayout::FSizes Sizes;
+	if (BluLayout::ComputeSizes(Settings.ViewSize, Renderer ? Renderer->ScaleFactor : 1.f, Sizes))
+	{
+		ResetTextureToSize(Sizes.TextureSize.X, Sizes.TextureSize.Y);
+	}
+}
+
+void UBluEye::ResetTextureToSize(int32 PixelWidth, int32 PixelHeight)
+{
 
 	// Here we init the texture to its initial state
 	DestroyTexture();
@@ -113,7 +132,7 @@ void UBluEye::ResetTexture()
 	
 
 	// init the new Texture2D
-	Texture = UTexture2D::CreateTransient(Settings.ViewSize.X, Settings.ViewSize.Y, PF_B8G8R8A8);
+	Texture = UTexture2D::CreateTransient(PixelWidth, PixelHeight, PF_B8G8R8A8);
 	Texture->AddToRoot();
 	Texture->UpdateResource();
 
@@ -135,8 +154,8 @@ void UBluEye::DestroyTexture()
 
 		if (Resource)
 		{
-			BeginReleaseResource(Resource);
-			Texture->UpdateResource();
+			// Releases the render resource now (no leaked GPU texture per resize)
+			Texture->ReleaseResource();
 
 			//NB: these lines are the problem for 5.4 causes deadlock on game thread on exit
 			//StartBatchedRelease();
@@ -159,11 +178,12 @@ void UBluEye::DestroyTexture()
 	bValidTexture = false;
 }
 
-void UBluEye::TextureUpdate(const void *Buffer, FUpdateTextureRegion2D *UpdateRegions, uint32  RegionCount)
+void UBluEye::TextureUpdate(const void *Buffer, FUpdateTextureRegion2D *UpdateRegions, uint32 RegionCount, int32 BufferWidth, int32 BufferHeight)
 {
 	if (!Browser || !bEnabled)
 	{
 		UE_LOG(LogBlu, Warning, TEXT("No Browser access or BluEye not Enabled"))
+		FMemory::Free(UpdateRegions);
 		return;
 	}
 
@@ -172,18 +192,49 @@ void UBluEye::TextureUpdate(const void *Buffer, FUpdateTextureRegion2D *UpdateRe
 		if (Buffer == nullptr)
 		{
 			UE_LOG(LogBlu, Warning, TEXT("No Texture Data Buffer"))
+			FMemory::Free(UpdateRegions);
 			return;
 		}
-	 
+
+		// 1 px tolerance covers Chromium's ceil rounding, which only differs at fractional scale
+		const int32 Tol = (Renderer && Renderer->ScaleFactor != 1.f) ? 1 : 0;
+		BluLayout::FSizes Expected;
+		const bool bAtExpectedSize = BluLayout::ComputeSizes(Settings.ViewSize, Renderer ? Renderer->ScaleFactor : 1.f, Expected)
+			&& FMath::Abs(BufferWidth - Expected.TextureSize.X) <= Tol
+			&& FMath::Abs(BufferHeight - Expected.TextureSize.Y) <= Tol;
+		if (bAtExpectedSize)
+		{
+			bResizePending = false;
+		}
+
+		if (BufferWidth != Texture->GetSizeX() || BufferHeight != Texture->GetSizeY())
+		{
+			if (!bAtExpectedSize)
+			{
+				// Frame from an older size (still in flight after a resize)
+				FMemory::Free(UpdateRegions);
+				return;
+			}
+
+			// First frame after a resize, or Chromium rounded the scaled size differently
+			ResetTextureToSize(BufferWidth, BufferHeight);
+
+			// The new texture is empty, so upload the whole buffer
+			FMemory::Free(UpdateRegions);
+			UpdateRegions = static_cast<FUpdateTextureRegion2D*>(FMemory::Malloc(sizeof(FUpdateTextureRegion2D)));
+			*UpdateRegions = FUpdateTextureRegion2D(0, 0, 0, 0, BufferWidth, BufferHeight);
+			RegionCount = 1;
+		}
+
 		FUpdateTextureRegionsData* RegionData = new FUpdateTextureRegionsData;
 		RegionData->Texture2DResource = (FTextureResource*)Texture->GetResource();
 		RegionData->NumRegions = RegionCount;
 		RegionData->SrcBpp = 4;
-		RegionData->SrcPitch = int32(Settings.ViewSize.X) * 4;
+		RegionData->SrcPitch = BufferWidth * 4;
 		RegionData->Regions = UpdateRegions;
 
 		//We need to copy this memory or it might get uninitialized
-		RegionData->SrcData.SetNumUninitialized(RegionData->SrcPitch * int32(Settings.ViewSize.Y));
+		RegionData->SrcData.SetNumUninitialized(RegionData->SrcPitch * BufferHeight);
 		FPlatformMemory::Memcpy(RegionData->SrcData.GetData(), Buffer, RegionData->SrcData.Num());
 
 		ENQUEUE_RENDER_COMMAND(UpdateBLUICommand)(
@@ -191,7 +242,7 @@ void UBluEye::TextureUpdate(const void *Buffer, FUpdateTextureRegion2D *UpdateRe
 			{
 				for (uint32 RegionIndex = 0; RegionIndex < RegionData->NumRegions; RegionIndex++)
 				{
-					RHIUpdateTexture2D(RegionData->Texture2DResource->TextureRHI->GetTexture2D(), 0, RegionData->Regions[RegionIndex], RegionData->SrcPitch, RegionData->SrcData.GetData());
+					CommandList.UpdateTexture2D(RegionData->Texture2DResource->TextureRHI->GetTexture2D(), 0, RegionData->Regions[RegionIndex], RegionData->SrcPitch, RegionData->SrcData.GetData());
 				}
 
 				FMemory::Free(RegionData->Regions);
@@ -201,6 +252,7 @@ void UBluEye::TextureUpdate(const void *Buffer, FUpdateTextureRegion2D *UpdateRe
 	else 
 	{
 		UE_LOG(LogBlu, Warning, TEXT("No Texture or Texture->GetResource()"))
+		FMemory::Free(UpdateRegions);
 	}
 }
 
@@ -330,43 +382,85 @@ void UBluEye::NavForward()
 
 UTexture2D* UBluEye::ResizeBrowser(const int32 NewWidth, const int32 NewHeight)
 {
-
 	if (NewWidth <= 0 || NewHeight <= 0)
 	{
-		// We can't do this, just do nothing.
 		UE_LOG(LogBlu, Log, TEXT("Can't resize when one or both of the sizes are <= 0!"));
 		return Texture;
 	}
 
-	// Disable the web view while we resize
-	bEnabled = false;
+	// Legacy callers expect the new texture on return, so replace it now
+	const bool bChanged = !Renderer || Renderer->Width != NewWidth || Renderer->Height != NewHeight;
+	ResizeBrowserScaled(NewWidth, NewHeight, Renderer ? Renderer->ScaleFactor : 1.f);
+	if (bChanged && Renderer && Browser)
+	{
+		ResetTexture();
+	}
 
-	// Set our new Width and Height
+	return Texture;
+}
+
+void UBluEye::ResizeBrowserScaled(const int32 NewWidth, const int32 NewHeight, const float NewScale)
+{
+
+	if (NewWidth <= 0 || NewHeight <= 0 || NewScale <= 0.f)
+	{
+		// We can't do this, just do nothing.
+		UE_LOG(LogBlu, Log, TEXT("Can't resize when one or both of the sizes or the scale are <= 0!"));
+		return;
+	}
+
 	Settings.ViewSize.X = NewWidth;
 	Settings.ViewSize.Y = NewHeight;
-	
-	// Update our render handler
+
+	// Before Init: the size is stored and Init will use it
+	if (!Renderer || !Browser)
+	{
+		return;
+	}
+
+	if (Renderer->Width == NewWidth && Renderer->Height == NewHeight && Renderer->ScaleFactor == NewScale)
+	{
+		return;
+	}
+
+	const bool bScaleChanged = Renderer->ScaleFactor != NewScale;
+
 	Renderer->Width = NewWidth;
 	Renderer->Height = NewHeight;
+	Renderer->ScaleFactor = NewScale;
 
-	bValidTexture = false;
-
-	Texture = UTexture2D::CreateTransient(Settings.ViewSize.X, Settings.ViewSize.Y, PF_B8G8R8A8);
-	Texture->AddToRoot();
-	Texture->UpdateResource();
-
-	bValidTexture = true;
+	// The texture object is replaced when the first frame at the new size arrives; callers re-read GetTextureIfValid()
+	if (bScaleChanged)
+	{
+		Browser->GetHost()->NotifyScreenInfoChanged();
+	}
 
 	// Let the browser's host know we resized it
 	Browser->GetHost()->WasResized();
+	Browser->GetHost()->Invalidate(PET_VIEW);
+	bResizePending = true;
+	FramesSinceResize = 0;
 
-	// Now we can keep going
-	bEnabled = true;
+	UE_LOG(LogBlu, Verbose, TEXT("BluEye was resized!"))
 
-	UE_LOG(LogBlu, Log, TEXT("BluEye was resized!"))
+}
 
-	return Texture;
+void UBluEye::RetryPendingResize()
+{
+	// CEF >= 128 sometimes drops a resize request; re-send it until a frame at the new size arrives (same workaround as the engine's WebBrowser)
+	if (!bResizePending || !Browser || ++FramesSinceResize < 3)
+	{
+		return;
+	}
+	FramesSinceResize = 0;
+	Browser->GetHost()->NotifyScreenInfoChanged();
+	Browser->GetHost()->WasResized();
+	Browser->GetHost()->Invalidate(PET_VIEW);
+}
 
+UTexture2D* UBluEye::GetTextureIfValid() const
+{
+	return bValidTexture ? Texture : nullptr;
 }
 
 UTexture2D* UBluEye::CropWindow(const int32 Y, const int32 X, const int32 NewWidth, const int32 NewHeight)
