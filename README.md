@@ -33,6 +33,7 @@ The same source builds on all three engines. `builder/build-engines.ps1` gives e
 ```
 powershell -ExecutionPolicy Bypass -File builder/build-engines.ps1                  # editor build, all three engines
 powershell -ExecutionPolicy Bypass -File builder/build-engines.ps1 -Mode Package    # distributable plugin per engine in Builds/UE_<ver>/BLUI
+powershell -ExecutionPolicy Bypass -File builder/build-engines.ps1 -Mode Package -Zip   # + Builds/Zips/BLUI-<version>-<commit>-UE<ver>.zip (Plugins/BLUI inside)
 powershell -ExecutionPolicy Bypass -File builder/build-engines.ps1 -Engines 5.9     # one engine only
 powershell -ExecutionPolicy Bypass -File builder/build-engines.ps1 -Mode Game       # package a C++ test game (Development + Shipping) in Builds/Game_UE_<ver>
 ```
