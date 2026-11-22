@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Engine: UE 5.8 em `C:\Program Files\Epic Games\UE_5.8`. Plataforma verificada: Win64 só.
+- Engines: **UE 5.7, 5.8 e 5.9** (`C:\Program Files\Epic Games\UE_5.x`), um mesmo código-fonte para as três, com um build separado por engine. Plataforma verificada: Win64 só. Diferença de API entre engines só com `#if ENGINE_MINOR_VERSION ...`.
 - Módulo: tudo novo vai no módulo `Blu` (`Source/Blu`), macro de export `BLU_API`. Sem novas dependências em `Blu.Build.cs` (já tem `Slate`, `SlateCore`, `UMG`).
 - Unidades (D3): tamanho CSS do browser = tamanho local Slate arredondado; `device_scale_factor` = `Geometry.Scale`; textura = CSS × escala arredondado para cima, mínimo 1 por eixo. O tamanho real da textura segue o buffer do CEF (D8).
 - Compatibilidade: a assinatura de `UBluEye::ResizeBrowser(const int32, const int32)` e de todos os `UFUNCTION` existentes não muda. `BluiWidget.uasset` não é alterado.
@@ -24,24 +24,21 @@
 Os binários do CEF não estão no git (`ThirdParty/cef/Win/*` está no `.gitignore`).
 
 1. **O usuário** baixa o release v5.1.0 de https://github.com/getnamo/BLUI-Unreal/releases e copia `Plugins/BLUI/ThirdParty/cef/Win` do zip para `E:\@Virtuart\Claude\Projetos\BLUI\ThirdParty\cef\Win`. (Download: precisa da permissão do usuário.)
-2. Tudo fica dentro de `E:\@Virtuart\Claude\Projetos\BLUI`. Projeto host Blueprint-only em `E:\@Virtuart\Claude\Projetos\BLUI\BLUIHost\BLUIHost.uproject`, fora do git (adicionar `BLUIHost/` ao `.gitignore`):
-   ```json
-   {"FileVersion":3,"EngineAssociation":"5.8","Plugins":[{"Name":"BLUI","Enabled":true}]}
-   ```
-   O plugin entra no host por junction para a raiz do repo (o UBT para de descer ao achar `BLUI.uplugin`, então não há recursão):
+2. Tudo fica dentro de `E:\@Virtuart\Claude\Projetos\BLUI`. Um host Blueprint-only por engine em `BLUIHost\UE_<ver>\BLUIHost.uproject` (fora do git). Cada `Plugins\BLUI` é uma pasta real com cópia do `BLUI.uplugin` e junctions para `Source`, `Content`, `Resources` e `ThirdParty` do repo; `Binaries`/`Intermediate` ficam por engine. Criado por:
    ```powershell
-   New-Item -ItemType Junction -Path "E:\@Virtuart\Claude\Projetos\BLUI\BLUIHost\Plugins\BLUI" -Target "E:\@Virtuart\Claude\Projetos\BLUI"
+   powershell -ExecutionPolicy Bypass -File builder\build-engines.ps1 -SetupOnly
    ```
-3. Comando de build (usado em toda task; compila os módulos do plugin para o editor, saída em `BLUI\Binaries`, já no `.gitignore`):
+   (Um junction único para a raiz do repo foi abandonado: as três engines gravariam em `BLUI\Binaries` e o `BuildPlugin` copiaria `.git`, `BLUIHost` e `Builds`.)
+3. Comando de build (usado em toda task; compila as três engines, uma depois da outra):
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File builder\build-engines.ps1
+   ```
+   Passou: tabela final com `OK` nas três linhas e exit code 0. Log por engine em `BLUIHost\UE_<ver>\build-Editor.log`. Pacote distribuível: `-Mode Package` → `Builds\UE_<ver>\BLUI`.
+4. Comando de teste, uma vez por engine (`<ver>` = 5.7, 5.8, 5.9):
    ```bash
-   "C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" UnrealEditor Win64 Development -Project="E:\@Virtuart\Claude\Projetos\BLUI\BLUIHost\BLUIHost.uproject" -WaitMutex
+   "C:\Program Files\Epic Games\UE_<ver>\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "E:\@Virtuart\Claude\Projetos\BLUI\BLUIHost\UE_<ver>\BLUIHost.uproject" -ExecCmds="Automation RunTests Blu.Layout;Quit" -unattended -nullrhi -nosplash -log
    ```
-   Passou: termina com `Result: Succeeded` e exit code 0.
-4. Comando de teste:
-   ```bash
-   "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "E:\@Virtuart\Claude\Projetos\BLUI\BLUIHost\BLUIHost.uproject" -ExecCmds="Automation RunTests Blu.Layout;Quit" -unattended -nullrhi -nosplash -log
-   ```
-   Passou: o log tem `Result={Success}` para cada teste `Blu.Layout.*` e nenhum `Result={Fail}`.
+   Passou: o log tem `Result={Success}` para cada teste `Blu.Layout.*` e nenhum `Result={Fail}`, nas três engines. Os checklists PIE rodam em cada host.
 
 ## Review Focus
 
@@ -112,7 +109,7 @@ Corrige os defeitos 1-7 do spec (D7, D8, D9).
 **Files:**
 - Modify: `Source/Blu/Public/RenderHandler.h:9-28`
 - Modify: `Source/Blu/Private/RenderHandler.cpp:12-34`
-- Modify: `Source/Blu/Public/BluEye.h:215-223` (API pública), `:242` (`ResetTextureToSize`), `:262-265` (`StaleBufferSize`)
+- Modify: `Source/Blu/Public/BluEye.h:215-223` (API pública), `:242` (`ResetTextureToSize`)
 - Modify: `Source/Blu/Private/BluEye.cpp:110-130` (`ResetTexture`), `:167-210` (`TextureUpdate`), `:336-375` (`ResizeBrowser`)
 
 **Interfaces:**
@@ -124,8 +121,8 @@ Corrige os defeitos 1-7 do spec (D7, D8, D9).
   virtual bool GetScreenInfo(CefRefPtr<CefBrowser> Browser, CefScreenInfo& ScreenInfo) override;
 
   // UBluEye (public)
-  UFUNCTION(BlueprintCallable, Category = "Blu")
-  UTexture2D* ResizeBrowserScaled(const int32 NewWidth, const int32 NewHeight, const float NewScale = 1.f);
+  // C++ only; lazy: texture object is replaced when the first frame at the new size arrives
+  void ResizeBrowserScaled(const int32 NewWidth, const int32 NewHeight, const float NewScale = 1.f);
   UTexture2D* GetTextureIfValid() const;   // nullptr until Init created a texture; never allocates
   void TextureUpdate(const void* Buffer, FUpdateTextureRegion2D* UpdateRegions, uint32 RegionCount, int32 BufferWidth, int32 BufferHeight);
   ```
@@ -138,21 +135,21 @@ Corrige os defeitos 1-7 do spec (D7, D8, D9).
 
 - [ ] **Step 3: `UBluEye::TextureUpdate`**, nesta ordem:
   - Toda saída antecipada faz `FMemory::Free(UpdateRegions)`.
-  - Novo membro privado `FIntPoint StaleBufferSize = FIntPoint::ZeroValue;` (gravado na Step 4). Se o buffer é `StaleBufferSize`: libera e retorna sem log (frame do tamanho antigo, esperado por 1-2 frames depois de resize).
-  - Se o buffer difere do tamanho da textura: `ResetTextureToSize(BufferWidth, BufferHeight)` e troca as regiões por uma só, do buffer inteiro (`0, 0, BufferWidth, BufferHeight`), porque a textura nova está vazia. Comentário de uma linha: cobre a diferença de arredondamento com o Chromium.
-  - Ao processar um frame, zera `StaleBufferSize`.
+  - Buffer do tamanho da textura: atualiza normalmente.
+  - Senão, `Expected = ComputeSizes(Settings.ViewSize, Renderer->ScaleFactor).TextureSize`. Buffer a até 1 px por eixo de `Expected`: `ResetTextureToSize(BufferWidth, BufferHeight)` e troca as regiões por uma só, do buffer inteiro, porque a textura nova está vazia. Comentário de uma linha: primeiro frame depois do resize / arredondamento do Chromium.
+  - Qualquer outro tamanho: libera e retorna sem log (frame de um tamanho antigo).
   - `SrcPitch = BufferWidth * 4`; tamanho da cópia `SrcPitch * BufferHeight`.
 
 - [ ] **Step 4: `UBluEye::ResizeBrowserScaled`**
-  - Se `NewWidth <= 0 || NewHeight <= 0 || NewScale <= 0`: log como hoje, retorna `Texture`.
-  - Grava `Settings.ViewSize`. Se `!Renderer || !Browser` (antes de `Init`), retorna `Texture`.
-  - Se tamanho e escala iguais aos do `Renderer`, retorna `Texture` sem fazer nada.
-  - Guarda se a escala mudou; `StaleBufferSize` = tamanho atual da textura (ou zero se não há textura); atualiza `Renderer->Width/Height/ScaleFactor`.
-  - `ResetTexture()` (já destrói a antiga e chama `ResetMatInstance`). A textura nova já existe quando a função retorna, então quem usa o retorno em Blueprint continua funcionando.
+  - Se `NewWidth <= 0 || NewHeight <= 0 || NewScale <= 0`: log como hoje, retorna.
+  - Grava `Settings.ViewSize`. Se `!Renderer || !Browser` (antes de `Init`), retorna.
+  - Se tamanho e escala iguais aos do `Renderer`, retorna sem fazer nada.
+  - Guarda se a escala mudou; atualiza `Renderer->Width/Height/ScaleFactor`.
+  - **Não** recria a textura (preguiçosa, D7): a Step 3 recria quando chega o primeiro frame no tamanho novo.
   - Se a escala mudou: `Browser->GetHost()->NotifyScreenInfoChanged()`.
   - `Browser->GetHost()->WasResized(); Browser->GetHost()->Invalidate(PET_VIEW);`
-  - Não mexe em `bEnabled`. Retorna `Texture`.
-- [ ] **Step 5: `UBluEye::ResizeBrowser(W, H)`** vira `return ResizeBrowserScaled(W, H, Renderer ? Renderer->ScaleFactor : 1.f);`. `GetTextureIfValid`: `return bValidTexture ? Texture : nullptr;`.
+  - Não mexe em `bEnabled`. Log de resize em `Verbose`.
+- [ ] **Step 5: `UBluEye::ResizeBrowser(W, H)`** (Blueprint, imediata): valida como hoje, chama `ResizeBrowserScaled(W, H, Renderer ? Renderer->ScaleFactor : 1.f)`, depois `ResetTexture()` se `Renderer && Browser`, e `return Texture;`. `GetTextureIfValid`: `return bValidTexture ? Texture : nullptr;`.
 
 - [ ] **Step 6: Grep de chamadores** de `TextureUpdate` e `ResizeBrowser`:
   ```bash
@@ -226,7 +223,7 @@ D1-D6, D11.
 
 - [ ] **Step 5: Build + teste** (comandos 3 e 4). Esperado: `Result: Succeeded`, teste passa.
 
-- [ ] **Step 6: Checklist PIE** (manual, no editor do `BLUI/BLUIHost`; usar `https://example.com` como `InitialURL`). Num Widget Blueprint adicionado ao viewport no BeginPlay:
+- [ ] **Step 6: Checklist PIE** (manual, no editor de cada `BLUI/BLUIHost/UE_<ver>` (5.7, 5.8, 5.9); usar `https://example.com` como `InitialURL`). Num Widget Blueprint adicionado ao viewport no BeginPlay:
   - [ ] Designer mostra "BLUI Browser"; Gerenciador de Tarefas não mostra processo `BLUBrowser`/CEF novo enquanto não há PIE.
   - [ ] Canvas, âncora central, alinhamento 0.5/0.5, Size To Content: página centralizada em `Settings.ViewSize`.
   - [ ] Canvas, âncora stretch total, offsets 0: página ocupa a tela; redimensionar a janela do PIE redimensiona a página (texto reflui, sem esticar depois de 1-2 frames).

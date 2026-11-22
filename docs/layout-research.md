@@ -1,6 +1,6 @@
 # BLUI: layout, tamanho e input — pesquisa e design
 
-Data: 2026-11-17. Base: BLUI `9da6439` (v5.1.0, CEF 128) e Unreal Engine 5.8.
+Data: 2026-11-17. Base: BLUI `9da6439` (v5.1.0, CEF 128) e Unreal Engine 5.8 (alvo: 5.7, 5.8 e 5.9 com o mesmo código).
 
 ## Problema
 
@@ -113,8 +113,8 @@ Um widget UMG nativo, **`BluBrowser`**, que se comporta como o Web Browser do UE
 | D4 | `ComputeDesiredSize` devolve `Settings.ViewSize`. | Mantém `ViewSize` útil: é o tamanho usado quando o slot pede o tamanho do conteúdo. |
 | D5 | No Designer (editor fora do PIE), `RebuildWidget` mostra um placeholder "BLUI Browser" e não cria `UBluEye`. | `UBluEye::Init` recusa fora do PIE; evita CEF no editor. |
 | D6 | `UBluBrowser` é dono do `UBluEye` (`UPROPERTY`, outer = o widget) e o reaproveita se `RebuildWidget` rodar de novo. Expõe `GetBluEye()` para JS, `LoadURL` e eventos. | Remover e re-adicionar o widget à tela não cria um segundo browser. |
-| D7 | Nova `UBluEye::ResizeBrowserScaled(W, H, Scale)`. `ResizeBrowser(W, H)` passa a chamar ela com a escala atual. Corrige os defeitos 1, 2 e 3. Sem mudança de assinatura para quem já usa `ResizeBrowser`. | Compatível com Blueprints existentes; escala padrão 1 mantém o comportamento antigo. |
-| D8 | `TextureUpdate` recebe `InWidth`/`InHeight` e usa como pitch e tamanho da cópia. Frame com o tamanho de antes do último resize é descartado. Qualquer outro tamanho diferente da textura recria a textura no tamanho do buffer e envia o buffer inteiro. `OnPaint` ignora `PET_POPUP`. Toda saída antecipada libera `UpdateRegions`. | Corrige 4, 5 e 6. A cópia nunca passa do buffer. Descartar o frame antigo = 1-2 frames com a imagem anterior esticada, como no engine. A recriação cobre a diferença de arredondamento entre o nosso cálculo e o do Chromium (`ScaleToCeiledSize`, arredonda para cima). |
+| D7 | Nova `UBluEye::ResizeBrowserScaled(W, H, Scale)`, só C++ (sem `UFUNCTION`), **preguiçosa**: muda o tamanho do CEF mas não recria a textura. `ResizeBrowser(W, H)` (Blueprint) chama ela com a escala atual e recria a textura na hora, como antes. Corrige os defeitos 1, 2 e 3. Sem mudança de assinatura para quem já usa `ResizeBrowser`. | Compatível com Blueprints existentes; escala padrão 1 mantém o comportamento antigo. O `BluBrowser` relê a textura a cada frame, então a troca preguiçosa não o afeta. |
+| D8 | `TextureUpdate` recebe `InWidth`/`InHeight` e usa como pitch e tamanho da cópia. Buffer do tamanho da textura: atualiza. Buffer a até 1 px por eixo do tamanho esperado (`ComputeSizes` do `ViewSize` e escala atuais): recria a textura no tamanho do buffer e envia o buffer inteiro. Qualquer outro tamanho (frame de um tamanho antigo): descarta. `OnPaint` ignora `PET_POPUP`. Toda saída antecipada libera `UpdateRegions`. | Corrige 4, 5 e 6. A cópia nunca passa do buffer. Durante um resize a textura antiga continua na tela, esticada, até chegar o primeiro frame no tamanho novo, como no engine. A tolerância de 1 px cobre a diferença de arredondamento com o Chromium (`ScaleToCeiledSize`, arredonda para cima). Uma recriação por resize, nunca várias. |
 | D9 | `RenderHandler` ganha `float ScaleFactor = 1.f` e `GetScreenInfo`. Mudança só de escala chama `NotifyScreenInfoChanged()`. | Corrige 7. |
 | D10 | Repasse de mouse (move, down, up, wheel, com captura) e teclado (key down/up, char) no `SBluBrowser`, usando os `Trigger*`/`KeyDown`/`KeyUp`/`CharKeyInput` existentes. | Sem isso, centralizar ou esticar desalinha os cliques. |
 | D11 | O Blueprint `BluiWidget.uasset` não é alterado. O README passa a recomendar o `BluBrowser`. | Não editar asset binário; quem usa o antigo não quebra. |
