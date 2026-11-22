@@ -1,5 +1,6 @@
 #include "RenderHandler.h"
 #include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
 #include "BluEye.h"
 
 RenderHandler::RenderHandler(int32 Width, int32 Height, UBluEye* UI)

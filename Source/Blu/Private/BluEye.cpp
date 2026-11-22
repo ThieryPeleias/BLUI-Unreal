@@ -3,6 +3,10 @@
 #include "IBlu.h"
 #include "RenderHandler.h"
 #include "BluLayout.h"
+#include "Engine/Engine.h"
+#include "Engine/World.h"
+#include "Misc/Paths.h"
+#include "RenderingThread.h"
 
 FTickEventLoopData UBluEye::EventLoopData = FTickEventLoopData();
 

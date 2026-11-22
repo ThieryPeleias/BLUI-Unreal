@@ -1,5 +1,10 @@
 #include "BluBlueprintFunctionLibrary.h"
 #include "BluJsonObj.h"
+#include "Engine/Engine.h"
+#include "Misc/Paths.h"
+#include "UObject/Package.h"
+#include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
 
 
 UBluBlueprintFunctionLibrary::UBluBlueprintFunctionLibrary(const class FObjectInitializer& PCIP)

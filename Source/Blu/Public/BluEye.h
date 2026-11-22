@@ -4,6 +4,10 @@
 #include "BluTypes.h"
 #include "BluManager.h"
 #include "UObject/Object.h"
+#include "Engine/Texture2D.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Input/Events.h"
+#include "HAL/ThreadSafeBool.h"
 #include "BluEye.generated.h"
 
 UCLASS(ClassGroup = Blu, Blueprintable)

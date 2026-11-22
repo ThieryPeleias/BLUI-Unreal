@@ -1,5 +1,6 @@
 #include "IBlu.h"
 #include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
 #include "BluManager.h"
 
 #if PLATFORM_WINDOWS && IS_MONOLITHIC
