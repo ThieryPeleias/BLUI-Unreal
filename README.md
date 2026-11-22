@@ -14,6 +14,30 @@ To install check out the latest releases https://github.com/getnamo/BLUI-Unreal/
 
 [Discord Server](https://discord.gg/qfJUyxaW4s)
 
+### BluBrowser widget
+
+A UMG widget that anchors, centers and stretches like the engine's Web Browser widget, and resizes the page to match its slot.
+
+- Drag **BLUI Browser** from the palette (category *BLUI*) into your Widget Blueprint and set `Initial URL`.
+- Use anchors / `Fill` alignment to size it. The page is re-laid out to the widget size, so text reflows instead of stretching.
+- `Settings.ViewSize` only applies when the slot uses *Size To Content*; otherwise the layout size wins. Keep it above 0: it is also the initial browser size.
+- Call `Get Blu Eye` to reach the underlying `BluEye` for `ExecuteJS`, `LoadURL` and events.
+- Mouse and keyboard input is forwarded to the page.
+- `<select>` dropdowns and other CEF popups are not rendered yet.
+- The older `BluiWidget` keeps working unchanged.
+
+### Building for UE 5.7, 5.8 and 5.9
+
+The same source builds on all three engines. `builder/build-engines.ps1` gives each engine its own host project in `BLUIHost/UE_<ver>` (its `Plugins/BLUI` links to this repo's `Source`, `Content`, `Resources` and `ThirdParty`, but keeps its own `Binaries`/`Intermediate`), so the builds never overwrite each other.
+
+```
+powershell -ExecutionPolicy Bypass -File builder/build-engines.ps1                  # editor build, all three engines
+powershell -ExecutionPolicy Bypass -File builder/build-engines.ps1 -Mode Package    # distributable plugin per engine in Builds/UE_<ver>/BLUI
+powershell -ExecutionPolicy Bypass -File builder/build-engines.ps1 -Engines 5.9     # one engine only
+```
+
+Open `BLUIHost/UE_<ver>/BLUIHost.uproject` with the matching engine to test in PIE. `BLUIHost/` and `Builds/` are git-ignored.
+
 ### Convenience Blueprints
 
 The native plugin didn't contain any self contained drag and drop examples so I've added some.
