@@ -14,6 +14,9 @@ public:
 	static bool CPURenderSettings;
 	static bool AutoPlay;
 
+	/** True once CefInitialize succeeded; no other CEF call is safe before that */
+	static bool bCefInitialized;
+
 	virtual void OnBeforeCommandLineProcessing(const CefString& ProcessType,
 			CefRefPtr< CefCommandLine > CommandLine) override;
 

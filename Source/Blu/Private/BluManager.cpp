@@ -51,10 +51,14 @@ void BluManager::OnBeforeCommandLineProcessing(const CefString& process_type,
 
 void BluManager::DoBluMessageLoop()
 {
-	CefDoMessageLoopWork();
+	if (bCefInitialized)
+	{
+		CefDoMessageLoopWork();
+	}
 }
 
 CefSettings BluManager::Settings;
 CefMainArgs BluManager::MainArgs;
 bool BluManager::CPURenderSettings = false;
 bool BluManager::AutoPlay = true;
+bool BluManager::bCefInitialized = false;
