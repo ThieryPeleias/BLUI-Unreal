@@ -216,11 +216,23 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Blu")
 	UTexture2D* ResizeBrowser(const int32 NewWidth, const int32 NewHeight);
 
+	/** Resize the viewport in logical pixels; the texture is NewWidth x NewHeight scaled by NewScale (DPI) */
+	void ResizeBrowserScaled(const int32 NewWidth, const int32 NewHeight, const float NewScale = 1.f);
+
+	/** nullptr until Init created a texture; never allocates */
+	UTexture2D* GetTextureIfValid() const;
+
+	/** False when the CEF browser was never created (or already destroyed) */
+	bool IsBrowserValid() const { return Browser != nullptr; }
+
+	/** Call once per frame while resizing (BluBrowser does); re-sends a resize CEF dropped */
+	void RetryPendingResize();
+
 	//This cropping function doesn't work atm
 	//UFUNCTION(BlueprintCallable, Category = "Blu")
 	UTexture2D* CropWindow(const int32 Y, const int32 X, const int32 NewWidth, const int32 NewHeight);
 
-	void TextureUpdate(const void* Buffer, FUpdateTextureRegion2D * UpdateRegions, uint32  RegionCount);
+	void TextureUpdate(const void* Buffer, FUpdateTextureRegion2D* UpdateRegions, uint32 RegionCount, int32 BufferWidth, int32 BufferHeight);
 
 	void BeginDestroy() override;
 
@@ -240,6 +252,7 @@ protected:
 	CefKeyEvent KeyEvent;
 
 	void ResetTexture();
+	void ResetTextureToSize(int32 PixelWidth, int32 PixelHeight);
 	void DestroyTexture();
 	void ResetMatInstance();
 		
@@ -263,4 +276,6 @@ private:
 
 	FBluTextureParams RenderParams;
 	FThreadSafeBool bValidTexture;
+	bool bResizePending = false;
+	int32 FramesSinceResize = 0;
 };

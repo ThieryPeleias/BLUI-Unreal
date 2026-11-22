@@ -13,9 +13,11 @@ class RenderHandler : public CefRenderHandler
 
 		int32 Width;
 		int32 Height;
+		float ScaleFactor = 1.f;
 
 		// CefRenderHandler interface
 		virtual void GetViewRect(CefRefPtr<CefBrowser> Browser, CefRect &Rect) override;
+		virtual bool GetScreenInfo(CefRefPtr<CefBrowser> Browser, CefScreenInfo& ScreenInfo) override;
 
 		void OnPaint(CefRefPtr<CefBrowser> Browser, PaintElementType Type, const RectList &DirtyRects, const void *Buffer, int Width, int Height) override;
 
