@@ -12,7 +12,9 @@
   -Mode Editor   compiles the editor modules in the Blueprint-only host BLUIHost/UE_<ver>.
                  Use it to open the editor / run PIE and automation tests for that engine.
   -Mode Package  runs RunUAT BuildPlugin and writes a distributable plugin to
-                 Builds/UE_<ver>/BLUI.
+                 Builds/UE_<ver>/BLUI. With -Zip it also writes
+                 Builds/Zips/BLUI-<VersionName>-<commit>-UE<ver>.zip (Plugins/BLUI/... inside,
+                 ready to drop into a project root).
   -Mode Game     packages a small C++ game (BLUIHost/Game_UE_<ver>, strictest build settings)
                  with BuildCookRun for each -GameConfigs entry, archived to
                  Builds/Game_UE_<ver>/<config>. -WithWebBrowser also enables the engine's
@@ -25,6 +27,7 @@
   powershell -ExecutionPolicy Bypass -File builder/build-engines.ps1 -SetupOnly
   powershell -ExecutionPolicy Bypass -File builder/build-engines.ps1
   powershell -ExecutionPolicy Bypass -File builder/build-engines.ps1 -Engines 5.9 -Mode Package
+  powershell -ExecutionPolicy Bypass -File builder/build-engines.ps1 -Mode Package -Zip
   powershell -ExecutionPolicy Bypass -File builder/build-engines.ps1 -Mode Game -GameConfigs Shipping
 #>
 param(
@@ -33,6 +36,7 @@ param(
 	[string]$Mode = "Editor",
 	[string[]]$GameConfigs = @("Development", "Shipping"),
 	[switch]$WithWebBrowser,
+	[switch]$Zip,
 	[switch]$SetupOnly,
 	[string]$EpicRoot = "C:\Program Files\Epic Games"
 )
@@ -44,6 +48,28 @@ $GameConfigs = $GameConfigs | ForEach-Object { $_ -split "," }
 $Repo =(Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $Linked = @("Source", "Content", "Resources", "ThirdParty", "Config")
 $GameTag = if ($WithWebBrowser) { "GameWB" } else { "Game" }
+
+# Zips a packaged plugin folder with every entry under Plugins/BLUI/ (the layout of the upstream releases)
+function New-PluginZip([string]$PluginDir, [string]$ZipPath)
+{
+	Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+	New-Item -ItemType Directory -Force (Split-Path $ZipPath) | Out-Null
+	Remove-Item $ZipPath -ErrorAction SilentlyContinue
+	$Root = (Resolve-Path $PluginDir).Path.TrimEnd("\") + "\"
+	$Archive = [System.IO.Compression.ZipFile]::Open($ZipPath, [System.IO.Compression.ZipArchiveMode]::Create)
+	try
+	{
+		foreach ($File in Get-ChildItem $Root -Recurse -File)
+		{
+			$Entry = "Plugins/BLUI/" + $File.FullName.Substring($Root.Length).Replace("\", "/")
+			[void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($Archive, $File.FullName, $Entry, [System.IO.Compression.CompressionLevel]::Optimal)
+		}
+	}
+	finally
+	{
+		$Archive.Dispose()
+	}
+}
 
 function Write-IfMissing([string]$Path, [string]$Text)
 {
@@ -187,6 +213,18 @@ foreach ($Version in $Engines)
 		$Code = Invoke-Logged $Log $Step[1] $Step[2]
 		$Results += [pscustomobject]@{ Engine = $Version; Step = $Step[0]; Result = $(if ($Code -eq 0) { "OK" } else { "FAILED (exit $Code, see $Log)" }) }
 		if ($Code -ne 0) { $Failed = $true; break }
+	}
+
+	if ($Mode -eq "Package" -and $Zip -and -not $Failed)
+	{
+		$VersionName = (Get-Content (Join-Path $Repo "BLUI.uplugin") -Raw | ConvertFrom-Json).VersionName
+		$Commit = (git -C $Repo rev-parse --short HEAD | Out-String).Trim()
+		# the name says which commit the zip came from, so mark builds made from uncommitted changes
+		if (git -C $Repo status --porcelain --untracked-files=no) { $Commit += "-dirty" }
+		$ZipPath = Join-Path $Repo "Builds\Zips\BLUI-$VersionName-$Commit-UE$Version.zip"
+		Write-Host "   zip -> $ZipPath"
+		New-PluginZip (Join-Path $Repo "Builds\UE_$Version\BLUI") $ZipPath
+		$Results += [pscustomobject]@{ Engine = $Version; Step = "Zip"; Result = "OK ($([math]::Round((Get-Item $ZipPath).Length / 1MB)) MB, $ZipPath)" }
 	}
 
 	# Run the Blu.Browser tests inside the packaged Development exe (inner binary: the stub launcher would open a window)
