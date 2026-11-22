@@ -34,7 +34,10 @@ The same source builds on all three engines. `builder/build-engines.ps1` gives e
 powershell -ExecutionPolicy Bypass -File builder/build-engines.ps1                  # editor build, all three engines
 powershell -ExecutionPolicy Bypass -File builder/build-engines.ps1 -Mode Package    # distributable plugin per engine in Builds/UE_<ver>/BLUI
 powershell -ExecutionPolicy Bypass -File builder/build-engines.ps1 -Engines 5.9     # one engine only
+powershell -ExecutionPolicy Bypass -File builder/build-engines.ps1 -Mode Game       # package a C++ test game (Development + Shipping) in Builds/Game_UE_<ver>
 ```
+
+Packaging a game works on 5.7, 5.8 and 5.9 (Development and Shipping) **as long as the engine's Web Browser plugin (WebBrowserWidget) is disabled**. A packaged game is one monolithic exe; with that plugin on, the engine's CEF SDK and BLUI's end up in the same exe and their symbols collide. That used to crash the game at startup. Now the build prints a `BLUI: the project enables the engine's Web Browser plugin...` warning, and at runtime BLUI disables itself with `STATUS: BLUI disabled` instead of crashing. In the editor both plugins work side by side.
 
 Open `BLUIHost/UE_<ver>/BLUIHost.uproject` with the matching engine to test in PIE. `BLUIHost/` and `Builds/` are git-ignored.
 
